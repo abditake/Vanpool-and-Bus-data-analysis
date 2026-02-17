@@ -1,0 +1,331 @@
+---
+title: "Vanpool vs. Bus Data Analysis"
+author: "Abdinasir Yussuf, Vish Venugopal"
+format: html
+editor: visual
+---
+
+## **Quarto Simplified Report**
+
+Once you have completed Parts I, II, III, and IV, you will work on
+building a simple report to present everything you have done for this
+deliverable. This file will also serve as the basic framework you can
+use to build upon when you work on the latter deliverables of the
+quarter.
+
+Your report should demonstrate that you are able to load your
+datasets and create some basic visualizations that may help you find
+patterns of interest in the data. It also must demonstrate that you have
+a group that is in communication with each other and that you have
+found and can describe the relevance of two data sets. The following
+describes the requirements for the report:
+
+#### General Formatting Guidelines
+
+-   Your report must be created using Quarto and rendered as an html
+    file that includes at least five sections (at least two for presenting
+    data, one for data context, one for data wrangling, and one for your
+    group information)
+
+-   Each section must have multiple subsections -- markdown, code, or a combination
+
+-   You must use multiple rows in at least one section and manually
+    change the proportion of the available space that rows or columns take
+    up in at least one instance (for instance, have one small row and one
+    large row).
+
+-   
+
+-   All subsections should have a title (subsection titles can be done with the different Markdown headers: `#` for main title, `##` for section title, `###` for subsection title, etc.
+
+-   
+
+-   Your report should have a theme defined (even if you want the default, include the code to define it)
+
+-   
+
+-   Your report must be self-contained as an html file (make sure to include the embed-resources: true line)
+
+# Section I Vanpool Dataset:
+
+### Data Source:
+
+**Vanpool:** [Vanpool data](https://data.kingcounty.gov/Transportation-Roads/King-County-Metro-Vanpool/pn62-amqd)
+
+-   This is from King County’s official .gov website and collected/provided by King County themselves. King County runs Vanpool, so I expect this dataset to be reliable.
+
+### Data Meaning:
+
+**Van:**
+
+-   *This dataset contains the coordinates of Vanpool trips’ starting locations and ending locations. We will be comparing it to the other dataset which contains information about buses, so that we can see if there is a correlation between Vanpool usage (we will use the trip’s starting point), and bus service quality in cities.*
+
+### Data Join:
+
+We are planning to join by city. We would need to ensure that for both datasets, the city name is spelled the same. However, this should not be an issue because we are adding the city names to both datasets individually before joining them, based on the coordinates in each dataset.
+
+### Observations:
+
+The vanpool dataset includes destination and origin rows meaning there are trips being recorded in this dataset. The dataset has 10 columns the_geom, Group_ID, WorksiteNa,Address,Latitude, Longitude, City, Origin_Des, EmployerID, WorksiteID. The geom column refers to the combined lattiude and logit
+
+```{r}
+library(dplyr)
+
+vanpool_df <- read.csv("/Users/codechugger/Downloads/Vanpool.csv")
+glimpse(vanpool_df)
+```
+
+### Data Issues:
+
+The vanpool dataset has some missing city values. There are more 20 city values missing within the dataset. This doesn't really impact reliability we would just remove the rows that don't have city since there are over a 1000 rows of data.
+
+# Section II Bus Dataset:
+
+```{r}
+
+library(dplyr)
+
+stops_df <- fromJSON("/Users/codechugger/Downloads/gtfs_puget_sound_consolidated/stops.txt")
+
+glimpse(stops_df)
+
+```
+
+### Data Source: [Puget Sound Consolidated GTFS Schedule](https://gtfs.sound.obaweb.org/prod/gtfs_puget_sound_consolidated.zip)
+
+-   Dataset can be found and downloaded here: [Open Transit Data (OTD) \| OTD downloads \| Sound Transit](https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd/otd-downloads). This is from Sound Transit’s official website. What they have done is combine the bus data from various transit agencies across Puget Sound (ex. Snohomish County, Community Transit). All these transit agencies are run by the government and the data comes from them, so I expect it to be reliable.
+
+### Data Meaning:
+
+-   *This dataset has lots more data about buses than we need, but what we will be using it for is mainly to see the density of bus stops in cities. We might also use it to see the frequency of buses and number of routes, or other data. This is useful to combine with our first dataset so that we can see if the quality of bus service in a city correlates to the vanpool usage there.*
+
+### Data Join:
+
+We are planning to join by city. We would need to ensure that for both datasets, the city name is spelled the same. However, this should not be an issue because we are adding the city names to both datasets individually before joining them, based on the coordinates in each dataset.
+
+### Observations:
+
+### Data Issues:** **
+
+# Section III: Joining the Data
+
+## Data Documentation:
+
+### Google Maps API:
+
+-   Imported stops data
+
+-   created an array of stops
+
+-   iterated over the array and called the lat and lon of each stop
+
+-   added the necessary information to the json object(city name, state, zipcode, county name)
+
+```{Typescript}
+
+for (const row of rows.slice(1)) {
+  const stop_id = row[STOP_ID_INDEX];
+  const stop_name = row[STOP_NAME_INDEX];
+  const stop_code = row[STOP_CODE_INDEX];
+  const stop_lat = parseFloat(row[LAT_INDEX]);
+  const stop_lon = parseFloat(row[LONG_INDEX]);
+
+  if (!isNaN(stop_lat) && !isNaN(stop_lon)) {
+    stops.push({ stop_id, stop_name,stop_lat, stop_lon, stop_code });
+  }
+}
+
+
+// how we called the api 
+async function reverseGeocode(lat: number, lon: number) {
+  const baseUrl = "https://maps.googleapis.com/maps/api/geocode/json";
+
+  const url = `${baseUrl}?latlng=${lat},${lon}&key=${process.env.GOOGLEMAPS_API_KEY}`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const json = await res.json();
+    return json;
+  } catch (err) {
+    console.error("Geocode request failed:", err);
+    return null;
+  }
+}
+
+// How we processed the stop data
+async function processStops(stops: StopInfo[]) {
+
+  for (const stop of stops) {
+    const data = await reverseGeocode(stop.stop_lat, stop.stop_lon);
+
+    const findComponent = (type: string) =>
+      data?.results?.[0]?.address_components?.find(c => c.types.includes(type));
+
+    const record = {
+      stop_id: stop.stop_id,
+      stop_name: stop.stop_name,
+      stop_lat: stop.stop_lat,
+      stop_lon: stop.stop_lon,
+      stop_code: stop.stop_code,
+      city_name: findComponent("locality")?.long_name || null,
+      county_name: findComponent("administrative_area_level_2")?.long_name || null,
+      state_name: findComponent("administrative_area_level_1")?.long_name || null,
+      zip_code: findComponent("postal_code")?.long_name || null,
+    };
+
+    // save into results just for testing
+    results.push(record);
+
+    // File appending this adds a comma after every json object
+    fs.appendFileSync("gtfs_results.json", JSON.stringify(record) + ",\n");
+
+    console.log(`Processed ${stop.stop_id}`);
+  }
+}
+
+processStops(stops);
+
+```
+
+## Joined Data:
+
+```{r}
+
+install.packages("jsonlite")  # only if not installed
+library(dplyr)
+library(stringr)
+library(jsonlite)
+
+
+vanpool_df <- read.csv("/Users/codechugger/Downloads/Vanpool.csv")
+
+bus_df <- fromJSON("/Users/codechugger/projects/201_project/gtfs_results.json")
+
+
+joinedData <- full_join(vanpool_df, bus_df, by = c("City" = "city_name"))
+
+glimpse(joinedData)
+
+```
+
+## Cleaning Data:
+
+##  
+
+# PART 3: 
+
+#### Section III: Joining the Data
+
+-   
+
+-   This section will comprise all the work you did from **Part II: Data Join** and **Part III: Data Documentation**.
+
+-   
+
+-   First, you should show us how you performed your data join with all
+    code included. Use glimpse() to show us that you did the join correctly.
+
+-   
+
+-   Once you have displayed your successful join, please include everything that we asked in Part III.
+
+-   
+
+#### Section IV: Data Wrangling
+
+-   
+
+-   This section will comprise all the work you did from **Part IV: Combined Data Wrangling.**
+
+-   
+
+-   This section should contain at least **3** distinct
+    actions you did on your data set. These don't necessarily need to be
+    sequential (e.g., cleaning the data set, then summarizing the cleaned
+    version), but it can be!
+
+-   
+
+-   Make sure that you clearly label each step so it's clear to us that you performed at least three distinct actions.
+
+-   
+
+#### Section V: Providing Group Information
+
+-   
+
+-   You should have one section called "Group Information" that describes your group.
+
+-   
+
+-   You can format this section however you want (a subsection for each
+    person; one intro subsection and one subsection for bios), but you must
+    include:
+
+    -   
+
+    -   A sentence describing the main topic of interest for the group, the lab section time and your TA's full name.
+
+    -   
+
+    -   For each member of your group, include their full name, affiliation,
+        UW email, and one sentence about the member's interest in the topic for
+        your project and one biography sentence saying something about the
+        member's interest in informatics, data, careers, or similar. One way to
+        format affiliations could look like: 'Dr. Kyle Thayer (The Information
+        School, University of Washington; [kmthayer\@uw.edu](mailto:kmthayer@uw.edu)) is interested in...'., but there are many ways to do this!
+
+    -   
+
+    -   A short section ("Coding Notes") that describes tools from outside
+        class that you had to learn to use or additional resources that you used
+        to figure out how to use tools from class. If you used tools that were
+        not covered in class, you must list them here, describe how you learned
+        to use the tool in about 1-2 sentences, and provide a link to a resource
+        you used. If you used entirely tools from class activities, lectures,
+        and readings, then you can just say that!
+
+    -   
+
+-   
+
+------------------------------------------------------------------------
+
+##      Part 2:
+
+```{r}
+
+
+install.packages("jsonlite")  # only if not installed
+library(dplyr)
+library(stringr)
+library(jsonlite)
+
+
+
+stops_df <- read.csv("/Users/codechugger/Downloads/gtfs_puget_sound_consolidated/stops.txt")
+
+test <- fromJSON("/Users/codechugger/projects/201_project/gtfs_results.json")
+
+
+
+glimpse(stops_df)
+
+```
+
+## Part 3:
+
+## Part 4:
+
+## Documentation of process
+
+Getting Location from API
+
+```{r}
+
+
+
+```
